@@ -30,47 +30,58 @@ def para_init(data):
 def traceback(tb, cart, tags, slen):
     maxvl = float('-Inf')
     i = -1
-    for x in tb[-1]:
+    #print tb[-1]
+    for x in tb[-1]: #get the maximum value
+        #print x
         i += 1
-        if x[0] > maxvl:
+        if x[0] >= maxvl:
             maxvl = x[0]
             cur_tag = tags[i]
             pre_tag = x[1]
     predic_tag = ['stop', cur_tag, pre_tag]
-    for idx in range(slen, 1, -1):
+    for idx in range(slen-1, 1, -1):
         row = cart[idx].index((pre_tag, cur_tag))
         cur_tag = pre_tag
-        pre_tag = tb[row][idx][1] #the pre_pre_tag
+        pre_tag = tb[idx][row][1] #the pre_pre_tag
         predic_tag.append(pre_tag)
     predic_tag.append('*')
     predic_tag.append('*')
-    return predic_tag.reverse()
+    predic_tag.reverse()
+    return predic_tag
         
 
-def scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags, words, dptable, paradic):
+def scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, last_cart_tags, words, dptable, paradic):
     #dynamic programming
     vtdic = {}
     for pre_pre_tag in pre_pre_tags: #here tag is the tag for idx - 1
         tritags = pre_pre_tag + ',' + pre_tag + ',' + cur_tag
-        wordtagpair = words[idx] + ',' + cur_tag
+        if idx != len(words): #last idx is len(words) for no word
+            wordtagpair = words[idx] + ',' + cur_tag
+            if wordtagpair not in paradic:
+                paradic.setdefault(wordtagpair, 0)
         if tritags not in paradic:
             paradic.setdefault(tritags, 0)
-        if wordtagpair not in paradic:
-            paradic.setdefault(wordtagpair, 0)
+        #calculate the score
         if idx == 0:
             curvalue = paradic[tritags] + paradic[wordtagpair] #for first word
-        elif idx == len(words)+1:
-            curvalue = dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1][0] + paradic[tritags]
+        elif idx == len(words):
+            curvalue = dptable[idx-1][last_cart_tags.index((pre_pre_tag, pre_tag))][0] + paradic[tritags]
         else:
-            print cart_tags
-            #print dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1][0], paradic[tritags], paradic[wordtagpair]
-            curvalue = dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1][0] + paradic[tritags] + paradic[wordtagpair] #two scores combined (two features)
+            '''
+            print idx
+            print dptable
+            print last_cart_tags
+            print pre_pre_tag, pre_tag
+            print last_cart_tags.index((pre_pre_tag, pre_tag)), idx-1, 0
+            '''
+            #print dptable[1]
+            curvalue = dptable[idx-1][last_cart_tags.index((pre_pre_tag, pre_tag))][0] + paradic[tritags] + paradic[wordtagpair] #two scores combined (two features)
         vtdic.setdefault(pre_pre_tag, curvalue)
     vtdic_sortkeyls = sorted(vtdic.items(), key = lambda x: x[1], reverse = True)
     #print vtdic_sortkeyls
-    #print vtdic[vtdic_sortkeyls[0]]
-    #print vtdic_sortkeyls[0]
-    return (vtdic[vtdic_sortkeyls[0][0]], vtdic_sortkeyls[0][1])
+    #print vtdic[vtdic_sortkeyls[0][0]]
+    #print vtdic_sortkeyls[0][0]
+    return (vtdic[vtdic_sortkeyls[0][0]], vtdic_sortkeyls[0][0])
             
 
 def viterbi(paras, words, tags):
@@ -82,17 +93,20 @@ def viterbi(paras, words, tags):
         elif idx == 1: pre_pre_tags, pre_tags, cur_tags = ['*'], tags, tags
         elif idx == len(words): pre_pre_tags, pre_tags, cur_tags = tags, tags, ['stop'] #last tag of the sentence is "stop"
         else: pre_pre_tags, pre_tags, cur_tags = tags, tags, tags
-        
         cart_tags = [(a, b) for a in pre_tags for b in cur_tags]
         cart_tags_tb.append(cart_tags)
+        #print cart_tags_tb[0]
         cur_col = [([0, None]) for j in range(len(cart_tags))]
+        #print cur_col
         for element in cart_tags:
             pre_tag = element[0]
             cur_tag = element[1]
-            cur_col[cart_tags.index(element)] = scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags, words, dptable, paras)
+            cur_col[cart_tags.index(element)] = scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags_tb[idx-1], words, dptable, paras)
+            #print cur_col
         dptable.append(cur_col)
-    
+        #print dptable
     predic_tag = traceback(dptable, cart_tags_tb, tags, len(words)) #calculate predicted tags by traceback
+    #print 'in viterbi', predic_tag
     return predic_tag
 
 def data_partition(data):
@@ -102,9 +116,9 @@ def data_partition(data):
     valdata = []
     testdata = []
     
-    trindexls = indexls[0: int(math.floor(len(data)*0.6))]
-    valindexls = indexls[int(math.floor(len(data)*0.6))+1: int(math.floor(len(data)*0.8))]
-    teindexls = indexls[int(math.floor(len(data)*0.8))+1: len(data)]
+    trindexls = indexls[0: int(math.floor(len(data)*0.6))] #60% training
+    valindexls = indexls[int(math.floor(len(data)*0.6))+1: int(math.floor(len(data)*0.8))] #20 validation
+    teindexls = indexls[int(math.floor(len(data)*0.8))+1: len(data)] #20 testing
 
     for i in trindexls:
         traindata.append(data[i])
@@ -119,13 +133,14 @@ def data_partition(data):
 
 def update(predic_tag, words, true_tag, paradic):
     if predic_tag != true_tag:
+        #print predic_tag
         #update trigram feature weights
         for idx in range(len(words)):
-            paradic[true_tag[idx] + ',' + ture_tag[idx+1] + ',' + ture_tag[idx+2]] += 1
+            paradic[true_tag[idx] + ',' + true_tag[idx+1] + ',' + true_tag[idx+2]] += 1
             paradic[predic_tag[idx] + ',' + predic_tag[idx+1] + ',' + predic_tag[idx+2]] -= 1
-            paradic[words[idx] + ',' + ture_tag[idx+2]] += 1
+            paradic[words[idx] + ',' + true_tag[idx+2]] += 1
             paradic[words[idx] + ',' + predic_tag[idx+2]] -= 1
-        paradic[true_tag[-3] + ',' + ture_tag[-2] + ',' + ture_tag[-1]] += 1
+        paradic[true_tag[-3] + ',' + true_tag[-2] + ',' + true_tag[-1]] += 1
         paradic[predic_tag[-3] + ',' + predic_tag[-2] + ',' + predic_tag[-1]] -= 1
     return paradic
 
