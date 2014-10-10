@@ -27,20 +27,20 @@ def para_init(data):
             paradic.setdefault(s2, 0)
     return paradic, tagls
             
-def traceback(tb, cart, tags, last_col, slen):
+def traceback(tb, cart, tags, slen):
     maxvl = float('-Inf')
     i = -1
-    for x in last_col:
+    for x in tb[-1]:
         i += 1
         if x[0] > maxvl:
             maxvl = x[0]
-            lasttag = tags[i]
+            cur_tag = tags[i]
             pre_tag = x[1]
-    predic_tag = ['stop', lasttag, pre_tag]
+    predic_tag = ['stop', cur_tag, pre_tag]
     for idx in range(slen, 1, -1):
-        row = cart.index((pre_tag, lasttag))
-        lasttag = pre_tag
-        pre_tag = [row][idx][1]
+        row = cart[idx].index((pre_tag, cur_tag))
+        cur_tag = pre_tag
+        pre_tag = tb[row][idx][1] #the pre_pre_tag
         predic_tag.append(pre_tag)
     predic_tag.append('*')
     predic_tag.append('*')
@@ -53,40 +53,46 @@ def scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags, words, dptable, pa
     for pre_pre_tag in pre_pre_tags: #here tag is the tag for idx - 1
         tritags = pre_pre_tag + ',' + pre_tag + ',' + cur_tag
         wordtagpair = words[idx] + ',' + cur_tag
-        if idx == len(words)+1:
-            curvalue = dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1] + paradic[tritags]
+        if tritags not in paradic:
+            paradic.setdefault(tritags, 0)
+        if wordtagpair not in paradic:
+            paradic.setdefault(wordtagpair, 0)
+        if idx == 0:
+            curvalue = paradic[tritags] + paradic[wordtagpair] #for first word
+        elif idx == len(words)+1:
+            curvalue = dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1][0] + paradic[tritags]
         else:
-            print tritags, paradic[tritags]
-            curvalue = dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1] + paradic[tritags] + paradic[wordtagpair] #two scores combined (two features)
-            vtdic.setdefault(pre_pre_tag, curvalue)
+            print cart_tags
+            #print dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1][0], paradic[tritags], paradic[wordtagpair]
+            curvalue = dptable[cart_tags.index((pre_pre_tag, pre_tag))][idx-1][0] + paradic[tritags] + paradic[wordtagpair] #two scores combined (two features)
+        vtdic.setdefault(pre_pre_tag, curvalue)
     vtdic_sortkeyls = sorted(vtdic.items(), key = lambda x: x[1], reverse = True)
-    return (vtdic[vtdic_sortkeyls[0]], vtdic_sortkeyls[0])
+    #print vtdic_sortkeyls
+    #print vtdic[vtdic_sortkeyls[0]]
+    #print vtdic_sortkeyls[0]
+    return (vtdic[vtdic_sortkeyls[0][0]], vtdic_sortkeyls[0][1])
             
 
 def viterbi(paras, words, tags):
+    dptable = [] #dptable store pre_pre_tag for cur_tag, and value
+    cart_tags_tb = []
     for idx in range(len(words)+1):
         #different tags set
         if idx == 0: pre_pre_tags, pre_tags, cur_tags= ['*'], ['*'], tags
         elif idx == 1: pre_pre_tags, pre_tags, cur_tags = ['*'], tags, tags
-        elif idx == len(words)+1: #last tag of the sentence is "stop"
-            pre_pre_tags, pre_tags, cur_tags = tags, tags, ['stop']
-            cart_tags = [(a, b) for a in pre_tags for b in cur_tags]
-            last_col = [([0, None]) for j in range(len(cart_tags))]
-            for element in cart_tags:
-                pre_tag = element[0]
-                cur_tag = element[1]
-                last_col[cart_tags.index(element)] = scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags, words, dptable, paras)
-        else: 
-            pre_pre_tags, pre_tags, cur_tags = tags, tags, tags
-            cart_tags = [(a, b) for a in pre_tags for b in cur_tags]
-            dptable = [([([0, None]) for j in range(len(words))]) for k in  range(len(cart_tags))] #dptable store pre_pre_tag for cur_tag and value
-            for element in cart_tags:
-                pre_tag = element[0]
-                cur_tag = element[1]
-                dpinx = idx + 2
-                dptable[cart_tags.index(element)][dpidx] = scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags, words, dptable, paras)
-    #calculate predicted tags by traceback
-    predic_tag = traceback(dptable, cart_tags, tags, last_col, len(words))
+        elif idx == len(words): pre_pre_tags, pre_tags, cur_tags = tags, tags, ['stop'] #last tag of the sentence is "stop"
+        else: pre_pre_tags, pre_tags, cur_tags = tags, tags, tags
+        
+        cart_tags = [(a, b) for a in pre_tags for b in cur_tags]
+        cart_tags_tb.append(cart_tags)
+        cur_col = [([0, None]) for j in range(len(cart_tags))]
+        for element in cart_tags:
+            pre_tag = element[0]
+            cur_tag = element[1]
+            cur_col[cart_tags.index(element)] = scorefunc(idx, pre_tag, cur_tag, pre_pre_tags, cart_tags, words, dptable, paras)
+        dptable.append(cur_col)
+    
+    predic_tag = traceback(dptable, cart_tags_tb, tags, len(words)) #calculate predicted tags by traceback
     return predic_tag
 
 def data_partition(data):
