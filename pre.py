@@ -25,6 +25,7 @@ def genetr(filename):
                 subtxt = []
                 sublb = ['*', '*']
     f.close()
+    #print data[100][0], data[1]
     return data
 
 def test():
