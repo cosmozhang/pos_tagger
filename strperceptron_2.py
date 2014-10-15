@@ -7,6 +7,7 @@ import pre
 import random
 import math
 import time
+import matplotlib.pyplot as pl
 
 def para_init(data):
     paradic = {}
@@ -180,26 +181,28 @@ def test(paradic, data, tags):
 def train(paradic, data, epochs, tags, valdata):
     prevvaliacc = 0.0
     epoch = 1
+    valiaccls = []
     while True:
         time_b_v = time.clock()
-        print "\nthis is epoch %d" % epoch
+        print "***************\nthis is epoch %d" % epoch
         for idx in range(len(data)):
-            if idx % 5 == 0: print "\n************%.2f%% is finished************" %(100*idx*1.0/len(data))
+            #if idx % 5 == 0: print "\n************%.2f%% is finished************" %(100*idx*1.0/len(data))
             eg = data[idx]
             #print eg
             
             predic_tag = viterbi(paradic, eg[0], tags)
             
             paradic = update(predic_tag, eg[0], eg[1], paradic)
+        valiacc =test(paradic, valdata, tags)
+        valiaccls.append(valiacc)
+        print "\naccuracy is %f%%" % (valiacc*100)
         if epoch > epochs: #early stop creterion
-            if (epoch - epochs)%1 == 0:
-                valiacc =test(paradic, valdata, tags)
-                print "accuracy is %f%%" % (valiacc*100)
+            if (epoch - epochs)%5 == 0:
                 if valiacc < prevvaliacc: break
                 prevvaliacc = valiacc
-        print "\nused time in this epoch is %f" % (time.clock() - time_b_v) #timing viterbi
+        print "\nused time in this epoch is %f\n*****************" % (time.clock() - time_b_v) #timing viterbi
         epoch += 1
-    return (paradic, epoch, valiacc)
+    return (paradic, epoch, valiaccls, epoch)
 
 def accuracy(orig, pred):  
     num = len(orig)
@@ -212,17 +215,35 @@ def accuracy(orig, pred):
 	    match += 1
     return (match, num)
 
+def plot_func(als, els, facc):
+    pl.figure(1)
+    pl.plot(els, als, color="green", marker='o', ls="--", ms=2)
+    pl.plot(els[-1], facc, color="red", marker='s', ms=5)
+
+    pl.xlim(0.0, els[-1]+1.0)
+    pl.ylim(0.4, 1.1)
+    pl.xlabel("epoch")
+    pl.ylabel("accuracy on validation set")
+    pl.title("learnig curve")
+    filename="lc"+".png"
+    pl.savefig(filename, format='png')
+    #print m,d
+    print "plotting ok"
+
+
 def main():
     filename = "./pos_fixed.tsv"
     data = pre.genetr(filename)
     paradic, tags= para_init(data)
-    epochs = 5
+    epochs = 50
     traindata, valdata, testdata = data_partition(data)
     #training
-    parasup, bestepoch, valiacc = train(paradic, traindata, epochs, tags, valdata)
+    parasup, bestepoch, valiaccls, finalepoch = train(paradic, traindata, epochs, tags, valdata)
     #final accuracy
     result_acc = test(parasup, testdata, tags)
+    
     print "~~~~~~~test accuracy is %0.2f%%~~~~~~" % (100*result_acc)
+    plot_func(valiaccls, range(1, finalepoch+1), result_acc)
 
 if __name__ == "__main__":
     main()
